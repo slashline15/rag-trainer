@@ -31,7 +31,8 @@ def markdown_to_html(text: str) -> str:
         lang = m.group(1) or ""
         code = _html_escape(m.group(2).rstrip())
         if lang:
-            result.append(f'<pre><code class="language-{lang}">{code}</code></pre>')
+            # Telegram aceita <code> dentro de <pre> mas NAO o atributo class
+            result.append(f"<pre><code>{code}</code></pre>")
         else:
             result.append(f"<pre>{code}</pre>")
         last_end = m.end()
@@ -107,16 +108,20 @@ def split_message(text: str, max_length: int = MAX_MESSAGE_LENGTH) -> list[str]:
 async def send_long_message(bot, chat_id: int, text: str, **kwargs) -> list:
     """Envia mensagem convertida para HTML, dividida se necessário."""
     html = markdown_to_html(text)
+    # Guardar texto original para fallback (sem tags HTML como texto literal)
+    original_parts = split_message(text)
     parts = split_message(html)
     sent_messages = []
-    for part in parts:
+    for i, part in enumerate(parts):
+        orig = original_parts[i] if i < len(original_parts) else part
         try:
             msg = await bot.send_message(
                 chat_id=chat_id, text=part, parse_mode="HTML", **kwargs,
             )
-        except Exception:
-            # Fallback: enviar sem parse_mode se HTML inválido
-            msg = await bot.send_message(chat_id=chat_id, text=part, **kwargs)
+        except Exception as e:
+            # Fallback: enviar texto original sem parse_mode
+            logger.warning(f"HTML send failed ({type(e).__name__}: {e}), sending as plain text")
+            msg = await bot.send_message(chat_id=chat_id, text=orig, **kwargs)
         sent_messages.append(msg)
     return sent_messages
 
