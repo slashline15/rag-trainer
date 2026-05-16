@@ -11,56 +11,73 @@ MAX_MESSAGE_LENGTH = 4096
 
 def markdown_to_html(text: str) -> str:
     """
-    Converte markdown limitado para HTML que o Telegram aceita.
-    Telegram HTML suporta: <b>, <i>, <code>, <pre>, <a>.
+    Converte markdown para HTML do Telegram (<b>, <i>, <code>, <pre>).
+    Processa por segmentos para evitar que regexes de markdown corrompam
+    os blocos de código.
     """
-    # Primeiro, escapar caracteres HTML no texto normal
-    # Mas precisamos proteger os blocos de código antes
-    code_blocks = []
+    # Dividir o texto em segmentos: blocos de código e texto normal
+    # Padrão: ```lang\ncode``` ou ```code```
+    pattern = re.compile(r'```(\w*)\n?([\s\S]*?)```', re.DOTALL)
 
-    def _save_code_block(m):
-        idx = len(code_blocks)
+    result = []
+    last_end = 0
+
+    for m in pattern.finditer(text):
+        # Processar texto normal antes deste bloco de código
+        normal = text[last_end:m.start()]
+        result.append(_convert_inline(normal))
+
+        # Processar bloco de código
         lang = m.group(1) or ""
-        code = m.group(2)
-        # Escapar HTML dentro do código
-        code = code.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        code = _html_escape(m.group(2).rstrip())
         if lang:
-            code_blocks.append(f'<pre><code class="language-{lang}">{code}</code></pre>')
+            result.append(f'<pre><code class="language-{lang}">{code}</code></pre>')
         else:
-            code_blocks.append(f"<pre>{code}</pre>")
-        return f"__CODEBLOCK_{idx}__"
+            result.append(f"<pre>{code}</pre>")
+        last_end = m.end()
 
-    # Proteger blocos de código ```lang\ncode```
-    text = re.sub(r'```(\w*)\n?([\s\S]*?)```', _save_code_block, text)
+    # Processar texto restante após o último bloco
+    result.append(_convert_inline(text[last_end:]))
 
-    # Proteger inline code `code`
-    inline_codes = []
+    return "".join(result).strip()
 
-    def _save_inline(m):
-        idx = len(inline_codes)
-        code = m.group(1).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-        inline_codes.append(f"<code>{code}</code>")
-        return f"__INLINE_{idx}__"
 
-    text = re.sub(r'`([^`]+)`', _save_inline, text)
+def _html_escape(text: str) -> str:
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-    # Agora escapar HTML no texto restante
-    text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-    # Converter markdown para HTML
+def _convert_inline(text: str) -> str:
+    """Converte markdown inline (bold, italic, inline code) em HTML."""
+    if not text:
+        return text
+
+    # Processar inline code `...` por segmentos também
+    code_pattern = re.compile(r'`([^`\n]+)`')
+    parts = []
+    last = 0
+    for m in code_pattern.finditer(text):
+        chunk = text[last:m.start()]
+        parts.append(_convert_text_markdown(_html_escape(chunk)))
+        parts.append(f"<code>{_html_escape(m.group(1))}</code>")
+        last = m.end()
+    # Resto
+    parts.append(_convert_text_markdown(_html_escape(text[last:])))
+    return "".join(parts)
+
+
+def _convert_text_markdown(text: str) -> str:
+    """Converte bold, italic e headers em HTML (texto já escapado)."""
+    # Headers → bold
+    text = re.sub(r'^#{1,6}\s+(.+)$', r'<b>\1</b>', text, flags=re.MULTILINE)
+    # **bold** e __bold__
     text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
     text = re.sub(r'__(.+?)__', r'<b>\1</b>', text)
-    text = re.sub(r'(?<!\w)\*(.+?)\*(?!\w)', r'<i>\1</i>', text)
-    # Headers -> bold
-    text = re.sub(r'^#{1,6}\s+(.+)$', r'<b>\1</b>', text, flags=re.MULTILINE)
+    # *italic* (não precedido/seguido de palavra)
+    text = re.sub(r'(?<![*\w])\*([^*\n]+?)\*(?![*\w])', r'<i>\1</i>', text)
+    # Links [text](url) → text
+    text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
+    return text
 
-    # Restaurar blocos de código
-    for idx, block in enumerate(code_blocks):
-        text = text.replace(f"__CODEBLOCK_{idx}__", block)
-    for idx, inline in enumerate(inline_codes):
-        text = text.replace(f"__INLINE_{idx}__", inline)
-
-    return text.strip()
 
 
 def split_message(text: str, max_length: int = MAX_MESSAGE_LENGTH) -> list[str]:
