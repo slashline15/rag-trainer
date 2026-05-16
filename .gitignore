@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# Virtualenv
+venv/
+.venv/
+env/
+
+# Environment
+.env
+
+# Database
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/users/
+*.ogg
+
+
+# Logs
+logs/
+
+# Media uploads
+media/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Claude/AI memory
+.claude/
+
+# Test artifacts
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Streamlit
+.streamlit/
