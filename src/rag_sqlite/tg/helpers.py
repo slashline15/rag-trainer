@@ -131,3 +131,24 @@ async def delete_message(update: Update, context: CallbackContext, message_id: i
         await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=message_id)
     except Exception:
         pass
+
+
+async def edit_or_delete_message(
+    update: Update, context: CallbackContext, message_id: int, new_text: str | None = None
+) -> None:
+    """Edita mensagem removendo botões ou alterando texto."""
+    try:
+        chat_id = update.effective_chat.id
+        if new_text is not None:
+            if len(new_text) > MAX_MESSAGE_LENGTH:
+                new_text = new_text[:MAX_MESSAGE_LENGTH - 3] + "..."
+            await context.bot.edit_message_text(
+                chat_id=chat_id, message_id=message_id,
+                text=new_text, reply_markup=None,
+            )
+        else:
+            await context.bot.edit_message_reply_markup(
+                chat_id=chat_id, message_id=message_id, reply_markup=None,
+            )
+    except Exception as e:
+        logger.debug(f"edit_or_delete_message {message_id}: {e}")
